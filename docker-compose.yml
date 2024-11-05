@@ -1,0 +1,59 @@
+version: '3.9'
+
+services:
+  imagger_postgres:
+    container_name: imagger_postgres
+    image: postgres
+    restart: unless-stopped
+    volumes:
+      - ./postgres_data/db:/var/lib/postgresql/data
+    env_file:
+      - .env
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: "pg_isready --username=root"
+      interval: 15s
+      timeout: 15s
+      retries: 10
+
+  imagger_django:
+    container_name: imagger_django
+    build: .
+    ports:
+      - "8000:8000"
+    depends_on:
+        imagger_postgres:
+          condition: service_healthy
+    environment:
+      - PYTHONUNBUFFERED=1
+    env_file:
+      - .env
+    entrypoint: poetry run gunicorn imagger.wsgi:application --bind 0.0.0.0:8000
+    volumes:
+      - ./public:/app/public
+
+  rabbitmq:
+    image: rabbitmq
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+    env_file:
+      - .env
+
+  imagger_celery_worker:
+    build: .
+    container_name: imagger_celery_worker
+    entrypoint: poetry run celery -A imagger worker
+    env_file:
+      - .env
+    volumes:
+      - ./public:/app/public
+
+  imagger_celery_beat:
+    build: .
+    container_name: imagger_celery_beat
+    entrypoint: poetry run celery -A imagger beat
+    env_file:
+      - .env
+
